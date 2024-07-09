@@ -1,0 +1,111 @@
+#version: '4'
+
+networks:
+  api:
+    external: true
+    name: amorela
+
+  nginx-amorela:
+    driver: bridge
+
+services:
+  backend:
+    image: nginx:stable-alpine
+    container_name: api-amorela
+    restart: unless-stopped
+    ports:
+      - "8000:80"
+    volumes:
+      - .:/var/www/html
+      - ./.environment/nginx/default.conf:/etc/nginx/conf.d/default.conf
+    depends_on:
+      - php
+      - postgres16
+      - redis
+      - npm
+    # - work
+    networks:
+      - nginx-amorela
+
+  php:
+    image: amorelaphp82:latest
+    container_name: laravel-amorela-backend
+    restart: unless-stopped
+    depends_on:
+      - postgres16
+    volumes:
+      - .:/var/www/html
+      - ./.environment/php:/usr/local/etc/php/conf.d
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - api
+      - nginx-amorela
+
+  redis:
+    image: redis:7.0-alpine
+    command: redis-server --requirepass local-redis-password
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - ./.environment/redis:/data
+    networks:
+      - api
+
+  composer:
+    image: composer:2.7.4
+    container_name: composer
+    volumes:
+      - .:/var/www/html
+    working_dir: /var/www/html
+    entrypoint: [ 'composer' ]
+    networks:
+      - api
+
+  artisan:
+      image: amorelaphp82:latest
+      container_name: artisan
+      volumes:
+        - .:/var/www/html
+      working_dir: /var/www/html
+      entrypoint: [ 'php', '/var/www/html/artisan' ]
+      networks:
+        - api
+
+  postgres16:
+    image: postgres:16.2
+    restart: unless-stopped
+    ports:
+      - "65432:5432"
+    environment:
+      - POSTGRES_PASSWORD=1234
+      - PGDATA=/var/lib/postgresql/data/pgdata
+      - POSTGRES_USER=amorela
+      - POSTGRES_DB=amorela
+    volumes:
+      - ./.environment/postgres16:/var/lib/postgresql/data
+      - ./dump:/home/dump
+    extra_hosts:
+    - "host.docker.internal:host-gateway"
+    networks:
+      - api
+
+  npm:
+    image: amorelanode20:latest
+    tty: true
+    restart: unless-stopped
+    ports:
+      - "5173:5173"
+    environment:
+        NODE_ENV: development
+    volumes:
+        - .:/var/www/html
+    working_dir: /var/www/html
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    entrypoint: [ 'npm', 'run', 'dev' ]
+    networks:
+        - api
+        - nginx-amorela
+
